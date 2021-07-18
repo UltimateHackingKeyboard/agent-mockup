@@ -4,6 +4,7 @@ import { Action, Store } from '@ngrx/store';
 import { Actions, Effect, ofType } from '@ngrx/effects';
 import { EMPTY, Observable, of, timer } from 'rxjs';
 import { distinctUntilChanged, map, mergeMap, switchMap, tap, withLatestFrom } from 'rxjs/operators';
+import * as semver from 'semver/preload';
 
 import {
     FirmwareUpgradeIpcResponse,
@@ -73,6 +74,10 @@ export class DeviceEffects {
 
                 if (state.bootloaderActive) {
                     return this.router.navigate(['/recovery-device']);
+                }
+
+                if (semver.gt(state.hardwareModules.rightModuleInfo.userConfigVersion, getVersions().userConfigVersion)) {
+                    return this.router.navigate(['/update-agent']);
                 }
 
                 if (state.connectedDevice && state.zeroInterfaceAvailable) {
@@ -243,9 +248,10 @@ export class DeviceEffects {
     @Effect({ dispatch: false }) updateFirmware$ = this.actions$
         .pipe(
             ofType<UpdateFirmwareAction>(ActionTypes.UpdateFirmware),
-            map(action => action.payload),
-            tap(payload => this.deviceRendererService.updateFirmware({
-                forceUpgrade: payload,
+            withLatestFrom(this.store.select(getUserConfiguration)),
+            tap(([action, userConfig]) => this.deviceRendererService.updateFirmware({
+                userConfig,
+                forceUpgrade: action.payload,
                 versionInformation: getVersions()
             }))
         );
@@ -253,11 +259,12 @@ export class DeviceEffects {
     @Effect({ dispatch: false }) updateFirmwareWith$ = this.actions$
         .pipe(
             ofType<UpdateFirmwareWithAction>(ActionTypes.UpdateFirmwareWith),
-            map(action => action.payload),
-            tap(payload => this.deviceRendererService.updateFirmware({
-                forceUpgrade: payload.forceUpgrade,
+            withLatestFrom(this.store.select(getUserConfiguration)),
+            tap(([action, userConfig]) => this.deviceRendererService.updateFirmware({
+                userConfig,
+                forceUpgrade: action.payload.forceUpgrade,
                 versionInformation: getVersions(),
-                uploadFile: payload.uploadFileData
+                uploadFile: action.payload.uploadFileData
             }))
         );
 
@@ -288,7 +295,8 @@ export class DeviceEffects {
     @Effect({ dispatch: false }) recoveryDevice$ = this.actions$
         .pipe(
             ofType<RecoveryDeviceAction>(ActionTypes.RecoveryDevice),
-            tap(() => this.deviceRendererService.recoveryDevice())
+            withLatestFrom(this.store.select(getUserConfiguration)),
+            tap(([, userConfig]) => this.deviceRendererService.recoveryDevice(userConfig))
         );
 
     @Effect() recoveryDeviceReply$ = this.actions$
